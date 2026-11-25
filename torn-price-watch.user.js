@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.0
+// @version      1.0.1
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -12,6 +12,7 @@
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_notification
+// @grant        GM_info
 // @downloadURL  https://raw.githubusercontent.com/LittleBigDev/torn-price-watch/main/torn-price-watch.user.js
 // @updateURL    https://raw.githubusercontent.com/LittleBigDev/torn-price-watch/main/torn-price-watch.user.js
 // ==/UserScript==
@@ -20,6 +21,7 @@
   "use strict";
 
   const LAUNCHER_ID = "price-watch-launcher";
+  const VERSION = (() => { try { return GM_info.script.version; } catch { return ""; } })();
   const TICK_MS = 5000;             // how often each tab checks whether a poll is due
   const POLL_CHOICES = [30, 60, 120, 300];  // seconds, same choices as Stock Watch
   const SEEN_TTL_MS = 24 * 3600e3;  // a listing alerts once, then again only after a day out of sight
@@ -240,7 +242,8 @@
           <input type="password" name="key" placeholder="Public Only API key" value="${esc(key)}" class="o-grow">
           <button class="o-btn">Save key</button></form>
         <p class="o-note">A <b>Public Only</b> key is enough. It stays in your userscript manager and is only sent to api.torn.com.</p>
-        <p class="o-note">Market: Torn API. Bazaars: weav3r.dev (community data, can lag a few minutes). Nothing is ever bought for you.</p>` : `
+        <p class="o-note">Market: Torn API. Bazaars: weav3r.dev (community data, can lag a few minutes). Nothing is ever bought for you.</p>
+        ${VERSION ? `<p class="o-note">Price Watch v${esc(VERSION)}</p>` : ""}` : `
         ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key in Settings to start.</div>`}
         <form class="o-acts o-add" data-form="add">
           <input type="text" name="name" list="price-watch-items" placeholder="Item name" class="o-grow" required>
