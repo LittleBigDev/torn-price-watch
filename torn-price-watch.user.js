@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.3
+// @version      1.4
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -363,10 +363,21 @@
     const paint = () => {
       const cards = [...document.querySelectorAll('[data-testid="bazaar-items"] [data-testid="item"]')];
       const mine = cards.filter((c) => c.querySelector(`img[src*="/images/items/${id}/"]`));
-      const atPrice = mine.filter((c) => c.innerText.includes(money(price)));
+      const priceOf = (c) => Number((c.innerText.match(/\$([\d,]+)/) || ["", ""])[1].replace(/,/g, ""));
+      const atPrice = mine.filter((c) => priceOf(c) === price);
       const hit = new Set(atPrice.length ? atPrice : mine);
-      for (const c of cards) if (c.classList.contains("pw-hit") !== hit.has(c)) c.classList.toggle("pw-hit");
-      if (!scrolled && hit.size) { scrolled = true; [...hit][0].scrollIntoView({ behavior: "smooth", block: "center" }); }
+      // same look as TornW3B Companion: green, red when the price went up since the check
+      for (const c of cards) {
+        c.classList.toggle("pw-hit", hit.has(c));
+        c.classList.toggle("pw-up", hit.has(c) && priceOf(c) > price);
+      }
+      if (!scrolled && hit.size) {
+        scrolled = true;
+        const first = [...hit][0];
+        first.classList.add("pw-flash");
+        setTimeout(() => first.classList.remove("pw-flash"), 800);
+        first.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     };
     let queued = false;
     new MutationObserver(() => {
@@ -483,7 +494,13 @@
   width: 100%; min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--oa-accent);
   background: var(--oa-accent); color: #fff; font-size: 15px; font-weight: 700; text-align: center;
   text-decoration: none; }
-.pw-hit { outline: 3px solid #22c55e !important; outline-offset: -3px; box-shadow: 0 0 0 4px rgba(34,197,94,.35) !important; }`;
+.pw-hit { --pw-c: #15803d; outline: 2px solid var(--pw-c) !important; outline-offset: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pw-c) 35%, transparent) !important; }
+body.dark-mode .pw-hit { --pw-c: #10b981; }
+.pw-hit.pw-up, body.dark-mode .pw-hit.pw-up { --pw-c: #dc2626; }
+.pw-flash { animation: pw-pop .8s ease-in-out forwards; }
+@keyframes pw-pop { 0% { transform: scale(1); background-color: var(--default-bg-green-hover-color, rgba(109,163,54,.3)); }
+  50% { transform: scale(1.03); } to { transform: scale(1); background-color: inherit; } }`;
 
   // ---------- start ----------
 
