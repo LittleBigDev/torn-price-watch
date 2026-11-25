@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.11
+// @version      0.12
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -205,11 +205,10 @@
     if (!open) return;
     const items = store.get("items", []), best = store.get("best", {});
     const maxOf = Object.fromEntries(items.map((i) => [i.id, i.max]));
-    const perItem = {};  // the 3 cheapest listings of each item
-    const matches = store.get("matches", []).filter((m) => m.price <= maxOf[m.id])
-      .sort((a, b) => a.price - b.price)
-      .filter((m) => (perItem[m.id] = (perItem[m.id] || 0) + 1) <= 3)
-      .sort((a, b) => a.price / maxOf[a.id] - b.price / maxOf[b.id]);
+    // listings of the item picked in the dropdown (remembered; first watch if it was removed)
+    const shownId = items.some((i) => i.id === store.get("shown")) ? store.get("shown") : items[0]?.id;
+    const matches = store.get("matches", []).filter((m) => m.id === shownId && m.price <= maxOf[m.id])
+      .sort((a, b) => a.price - b.price);
     const key = store.get("key", ""), error = store.get("error", ""), last = store.get("lastRun", 0);
     const paused = store.get("paused", false);
     const rows = items.map((it) => {
@@ -221,8 +220,8 @@
         <td class="num ${hit(b.im)}">${cell(b.im)}</td><td class="num ${hit(b.bz)}">${cell(b.bz)}</td>
         <td><button class="o-icon" data-del="${it.id}" title="Remove">✕</button></td></tr>`;
     }).join("");
-    const alertRows = matches.map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${esc(a.name)}</a>
-        <span class="o-sub">${a.src}${a.seller ? " · " + esc(a.seller) : ""}</span></td>
+    const alertRows = matches.slice(0, 5).map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${a.src}</a>
+        <span class="o-sub">${a.seller ? esc(a.seller) : "Item market"}</span></td>
         <td class="num go">${money(a.price)}</td><td class="num">x${a.qty}</td></tr>`).join("");
     panel.innerHTML = `
       <div class="o-head"><span class="o-dot ${error ? "is-bad" : key && !paused ? "is-live" : "is-warn"}"></span>
@@ -250,7 +249,8 @@
         <datalist id="price-watch-items"></datalist>
         <div class="o-scroll"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
           <tbody>${rows || `<tr><td colspan="5" class="o-empty">No item watched yet.</td></tr>`}</tbody></table></div>
-        <h4>Under max price${matches.length ? ` (${matches.length})` : ""}</h4>
+        <h4 class="o-h-pick">Under max price${matches.length ? ` (${matches.length})` : ""}
+          ${items.length ? `<select name="shown">${items.map((i) => `<option value="${i.id}"${i.id === shownId ? " selected" : ""}>${esc(i.name)}</option>`).join("")}</select>` : ""}</h4>
         <div class="o-scroll"><table><tbody>${alertRows || `<tr><td class="o-empty">Nothing under your max price.</td></tr>`}</tbody></table></div>
         <div class="o-acts">
           <button class="o-btn" data-act="check">Check now</button>
@@ -312,6 +312,7 @@
       render();
       poll(true);  // a higher max needs listings the last check did not keep
     } else if (t.name === "poll") store.set("pollSeconds", Number(t.value));
+    else if (t.name === "shown") { store.set("shown", Number(t.value)); render(); }
   }
 
   // ---------- style (from Torn Oracle: Travel) ----------
@@ -393,6 +394,8 @@
 #price-watch-panel .o-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 #price-watch-panel .o-grow { flex: 1 1 auto; }
 #price-watch-panel .o-add { margin: 0 0 10px; }
+#price-watch-panel h4.o-h-pick { display: flex; align-items: center; gap: 8px; }
+#price-watch-panel h4.o-h-pick select { flex: 0 1 auto; min-width: 0; text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--o-text); }
 #price-watch-panel .o-note { margin: 10px 0 0; font-size: 11px; color: var(--o-dim); }
 #price-watch-panel .o-banner { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; background: var(--o-bad-soft); color: var(--o-bad); font-size: 12px; }
 #${LAUNCHER_ID} { list-style: none; display: inline-flex; width: 34px; height: 34px; margin: 0; padding: 0; background: none; }
