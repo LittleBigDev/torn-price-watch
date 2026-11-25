@@ -8,12 +8,14 @@ With Violentmonkey, Tampermonkey or Torn PDA, open [torn-price-watch.user.js](ht
 
 ## Use
 
-Click the price tag icon next to your status icons, enter a **Public Only** API key, then add items with their max price.
+Click the price tag icon next to your status icons. In **Settings**, enter a **Public Only** API key and pick how often to check (30 s, 1, 2 or 5 min). In **Watch**, add items with their max price.
 
+- The watch list shows the cheapest item market and bazaar price of each item, green when under your max; click a price to open that listing.
+- Below it, pick an item to see its 5 cheapest listings under your max, refreshed at every check.
+- A new listing under your max triggers a browser notification (when the userscript host supports it) and an alert bar on top of the page, on every Torn tab. It always points to the cheapest current listing and stays until that item has nothing under your max, or until you close it.
+- **Pause** stops all automatic checks (no API calls) until you resume.
 - Item market listings come from the Torn API, bazaar listings from [weav3r.dev](https://weav3r.dev) (community data, can lag a few minutes).
-- An alert shows as a browser notification (when the userscript host supports it) and a banner on the page; click it to open the listing.
-- Each listing alerts once. Only one Torn tab polls at a time.
-- The script never buys anything: you do.
+- Only one Torn tab checks at a time. The script never buys anything: you do.
 
 ## License
 
