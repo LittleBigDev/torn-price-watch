@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.12
+// @version      0.13
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -141,7 +141,7 @@
 
   const money = (n) => (n == null ? "-" : "$" + Number(n).toLocaleString("en-US"));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  let panel = null, open = false, tab = store.get("key", "") ? "watch" : "settings";
+  let panel = null, open = store.get("open", false), tab = store.get("key", "") ? "watch" : "settings";
 
   // Alert bar, styled like Torn Oracle's export alert: on top of the page content, every Torn tab, as long as
   // the alerted item has a listing under its max; the close button hides it until the next alert
@@ -186,7 +186,7 @@
     if (!list) li.classList.add("is-floating");
     li.innerHTML = `<button type="button" title="Price Watch" aria-label="Price Watch">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.4 11.6 12.4 2.6A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.82ZM6.5 8A1.5 1.5 0 1 1 6.5 5a1.5 1.5 0 0 1 0 3Z"/></svg></button>`;
-    li.querySelector("button").addEventListener("click", (e) => { e.preventDefault(); open = !open; render(); });
+    li.querySelector("button").addEventListener("click", (e) => { e.preventDefault(); open = !open; store.set("open", open); render(); });
     (list || document.body)[list ? "prepend" : "appendChild"](li);
   }
 
@@ -275,7 +275,7 @@
     else if (b.dataset.del) {
       store.set("items", store.get("items", []).filter((i) => String(i.id) !== b.dataset.del));
       render();
-    } else if (b.dataset.act === "close") { open = false; render(); }
+    } else if (b.dataset.act === "close") { open = false; store.set("open", false); render(); }
     else if (b.dataset.act === "check") poll(true);
     else if (b.dataset.act === "pause") { store.set("paused", !store.get("paused", false)); render(); }
   }
@@ -427,6 +427,7 @@
   (document.head || document.documentElement).appendChild(style);
   new MutationObserver(ensureLauncher).observe(document.documentElement, { childList: true, subtree: true });
   ensureLauncher();
+  if (open) render();  // reopen the panel if it was open on the previous page
   setInterval(() => { poll(); paintBar(); }, TICK_MS);
   poll();
 })();
