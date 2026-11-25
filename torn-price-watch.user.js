@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.5
+// @version      1.6
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -25,7 +25,7 @@
   const TICK_MS = 5000;             // how often each tab checks whether a poll is due
   const POLL_CHOICES = [30, 60, 120, 300];  // seconds, same choices as Stock Watch
   const SEEN_TTL_MS = 24 * 3600e3;  // a listing alerts once, then again only after a day out of sight
-  const CATALOG_TTL_MS = 7 * 24 * 3600e3;
+  const CATALOG_TTL_MS = 24 * 3600e3;  // market values move daily
 
   const store = {
     get: (k, d) => { try { const v = GM_getValue(k); return v === undefined ? d : v; } catch { return d; } },
@@ -57,9 +57,9 @@
 
   async function catalog() {
     const c = store.get("catalog", null);
-    if (c && Date.now() - c.t < CATALOG_TTL_MS) return c.items;
+    if (c && Date.now() - c.t < CATALOG_TTL_MS && c.items[0]?.length === 3) return c.items;
     const d = await tornAPI("torn/items");
-    const items = (d.items || []).map((i) => [i.id, i.name]);
+    const items = (d.items || []).map((i) => [i.id, i.name, i.value?.market_price || 0]);
     store.set("catalog", { t: Date.now(), items });
     return items;
   }
@@ -229,11 +229,12 @@
       .sort((a, b) => a.price - b.price);
     const key = store.get("key", ""), error = store.get("error", ""), last = store.get("lastRun", 0);
     const paused = store.get("paused", false);
+    const mv = Object.fromEntries((store.get("catalog", null)?.items || []).map(([id, , v]) => [id, v]));
     const rows = items.map((it) => {
       const b = best[it.id] || {};
       const hit = (l) => (l?.price != null && l.price <= it.max ? "go" : "");
       const cell = (l) => (l?.url ? `<a class="o-best" href="${esc(l.url)}">${money(l.price)}</a>` : money(l?.price ?? (typeof l === "number" ? l : null)));
-      return `<tr><td>${esc(it.name)}</td>
+      return `<tr><td>${esc(it.name)}${mv[it.id] ? `<span class="o-sub">Market value: ${money(mv[it.id])}</span>` : ""}</td>
         <td class="num"><input type="number" class="o-max" data-id="${it.id}" value="${it.max}" min="1"></td>
         <td class="num ${hit(b.im)}">${cell(b.im)}</td><td class="num ${hit(b.bz)}">${cell(b.bz)}</td>
         <td><button class="o-icon" data-del="${it.id}" title="Remove">✕</button></td></tr>`;
@@ -288,7 +289,9 @@
   async function fillCatalog() {
     if (!store.get("key", "")) return;
     try {
+      const before = store.get("catalog", null)?.t;
       const items = await catalog();
+      if (store.get("catalog", null)?.t !== before) return render();  // fresh market values
       const dl = panel.querySelector("#price-watch-items");
       if (dl && !dl.children.length) dl.innerHTML = items.map(([, n]) => `<option value="${esc(n)}">`).join("");
     } catch {}
