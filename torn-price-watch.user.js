@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.10
+// @version      0.11
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -100,8 +100,10 @@
       const res = await Promise.allSettled([itemMarket(it.id), bazaars(it.id)]);
       const [im, bz] = res.map((r) => (r.status === "fulfilled" ? r.value : null));
       res.forEach((r) => { if (r.status === "rejected") error = String(r.reason?.message || r.reason); });
-      const low = (l) => (l && l.length ? Math.min(...l.map((x) => x.price)) : null);
-      best[it.id] = { im: low(im) ?? best[it.id]?.im ?? null, bz: low(bz) ?? best[it.id]?.bz ?? null, t: Date.now() };
+      // cheapest listing of each source, kept from the last check if that source failed
+      const low = (l, prev) => (!l ? prev ?? null : l.reduce((a, x) => (!a || x.price < a.price ? x : a), null));
+      const pick = (l) => l && { price: l.price, url: l.url };
+      best[it.id] = { im: pick(low(im, best[it.id]?.im)), bz: pick(low(bz, best[it.id]?.bz)), t: Date.now() };
       [[im, "Market"], [bz, "Bazaar"]].forEach(([list, src]) => {
         if (!list) return matches.push(...old.filter((m) => m.id === it.id && m.src === src));
         for (const l of list) {
@@ -212,10 +214,11 @@
     const paused = store.get("paused", false);
     const rows = items.map((it) => {
       const b = best[it.id] || {};
-      const hit = (p) => (p != null && p <= it.max ? "go" : "");
+      const hit = (l) => (l?.price != null && l.price <= it.max ? "go" : "");
+      const cell = (l) => (l?.url ? `<a class="o-best" href="${esc(l.url)}">${money(l.price)}</a>` : money(l?.price ?? (typeof l === "number" ? l : null)));
       return `<tr><td>${esc(it.name)}</td>
         <td class="num"><input type="number" class="o-max" data-id="${it.id}" value="${it.max}" min="1"></td>
-        <td class="num ${hit(b.im)}">${money(b.im)}</td><td class="num ${hit(b.bz)}">${money(b.bz)}</td>
+        <td class="num ${hit(b.im)}">${cell(b.im)}</td><td class="num ${hit(b.bz)}">${cell(b.bz)}</td>
         <td><button class="o-icon" data-del="${it.id}" title="Remove">✕</button></td></tr>`;
     }).join("");
     const alertRows = matches.map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${esc(a.name)}</a>
@@ -368,6 +371,8 @@
 #price-watch-panel .o-sub { display: block; font-size: 10px; color: var(--o-faint); }
 #price-watch-panel .go { color: var(--o-go); font-weight: 600; }
 #price-watch-panel a { color: var(--o-accent); }
+#price-watch-panel a.o-best { color: inherit; text-decoration: underline; text-decoration-color: var(--o-line); text-underline-offset: 3px; }
+#price-watch-panel a.o-best:hover { text-decoration-color: currentColor; }
 #price-watch-panel .o-empty { padding: 16px 10px; text-align: center; color: var(--o-faint); }
 #price-watch-panel button.o-btn {
   appearance: none; font: inherit; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 8px;
