@@ -14,6 +14,7 @@ Click the price tag icon next to your status icons. In **Settings**, enter a **P
 - Below it, pick an item to see its 5 cheapest listings under your max, refreshed at every check.
 - A new listing under your max triggers a browser notification (when the userscript host supports it) and an alert bar on top of the page, on every Torn tab. It always points to the cheapest current listing and stays until that item has nothing under your max, or until you close it.
 - **Pause** stops all automatic checks (no API calls) until you resume.
+- **Share settings** (in Settings) copies your watch list, max prices and check interval as JSON, or imports someone else's (it replaces your list). Your API key is never included.
 - Item market listings come from the Torn API, bazaar listings from [weav3r.dev](https://weav3r.dev) (community data, can lag a few minutes).
 - Only one Torn tab checks at a time. The script never buys anything: you do.
 

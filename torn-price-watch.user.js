@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.0.1
+// @version      1.1
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -144,6 +144,21 @@
   const money = (n) => (n == null ? "-" : "$" + Number(n).toLocaleString("en-US"));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   let panel = null, open = store.get("open", false), tab = store.get("key", "") ? "watch" : "settings";
+  let shareText = "", shareMsg = "";  // kept across re-renders (a poll redraws the panel)
+
+  // Shared settings: watched items and check interval; the API key is never included
+  const exportShared = () => JSON.stringify({ priceWatch: 1, items: store.get("items", []), pollSeconds: pollSeconds() });
+  function importShared(text) {
+    let d;
+    try { d = JSON.parse(text); } catch { return "This is not valid JSON."; }
+    const items = Array.isArray(d?.items) ? d.items : null;
+    if (!items || !items.every((i) => Number.isInteger(i?.id) && typeof i.name === "string" && Number(i.max) > 0)) {
+      return "These are not Price Watch settings.";
+    }
+    store.set("items", items.map((i) => ({ id: i.id, name: i.name, max: Number(i.max) })));
+    if (POLL_CHOICES.includes(d.pollSeconds)) store.set("pollSeconds", d.pollSeconds);
+    return "";
+  }
 
   // Alert bar, styled like Torn Oracle's export alert: on top of the page content, every Torn tab, as long as
   // the alerted item has a listing under its max; the close button hides it until the next alert
@@ -200,6 +215,7 @@
       panel.addEventListener("click", onClick);
       panel.addEventListener("submit", onSubmit);
       panel.addEventListener("change", onChange);
+      panel.addEventListener("input", (e) => { if (e.target.name === "share") shareText = e.target.value; });
     }
     panel.classList.toggle("o-dark", document.body.classList.contains("dark-mode"));
     panel.classList.toggle("is-open", open);
@@ -243,6 +259,13 @@
           <button class="o-btn">Save key</button></form>
         <p class="o-note">A <b>Public Only</b> key is enough. It stays in your userscript manager and is only sent to api.torn.com.</p>
         <p class="o-note">Market: Torn API. Bazaars: weav3r.dev (community data, can lag a few minutes). Nothing is ever bought for you.</p>
+        <h4>Share settings</h4>
+        <p class="o-note">Watched items, max prices and check interval. Your API key is not included. Importing replaces your watch list.</p>
+        <textarea class="o-share" name="share" rows="5" spellcheck="false" placeholder="Paste settings here to import them">${esc(shareText)}</textarea>
+        <div class="o-acts">
+          <button class="o-btn" data-act="share-export">Copy my settings</button>
+          <button class="o-btn" data-act="share-import">Import</button></div>
+        ${shareMsg ? `<p class="o-note">${esc(shareMsg)}</p>` : ""}
         ${VERSION ? `<p class="o-note">Price Watch v${esc(VERSION)}</p>` : ""}` : `
         ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key in Settings to start.</div>`}
         <form class="o-acts o-add" data-form="add">
@@ -274,7 +297,18 @@
   function onClick(e) {
     const b = e.target.closest("button");
     if (!b) return;
-    if (b.dataset.tab) { tab = b.dataset.tab; render(); }
+    if (b.dataset.tab) { tab = b.dataset.tab; shareMsg = ""; render(); }
+    else if (b.dataset.act === "share-export") {
+      shareText = exportShared();
+      navigator.clipboard.writeText(shareText).then(() => "Settings copied.", () => "Settings are in the box. Copy them from there.")
+        .then((m) => { shareMsg = m; render(); });
+    } else if (b.dataset.act === "share-import") {
+      if (!shareText.trim()) { shareMsg = "Paste settings into the box first."; render(); return; }
+      const err = importShared(shareText.trim());
+      shareMsg = err || `Imported ${store.get("items", []).length} watched items.`;
+      if (!err) { shareText = ""; poll(true); }
+      render();
+    }
     else if (b.dataset.del) {
       store.set("items", store.get("items", []).filter((i) => String(i.id) !== b.dataset.del));
       render();
@@ -390,6 +424,10 @@
 #price-watch-panel input[type=text], #price-watch-panel input[type=number], #price-watch-panel input[type=password], #price-watch-panel select {
   font: inherit; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--o-line);
   background: var(--o-bg); color: var(--o-text); max-width: 100%; min-width: 0;
+}
+#price-watch-panel textarea.o-share {
+  display: block; width: 100%; margin-top: 8px; font: 11px/1.4 ui-monospace, Consolas, monospace; padding: 6px 7px;
+  border-radius: 7px; border: 1px solid var(--o-line); background: var(--o-bg); color: var(--o-text); resize: vertical;
 }
 #price-watch-panel input.o-max { width: 8.5em; text-align: right; }
 #price-watch-panel input[name=max] { width: 8em; }
