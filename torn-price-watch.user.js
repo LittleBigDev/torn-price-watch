@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.9
+// @version      0.10
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -121,18 +121,18 @@
     if (fresh.length) notify(fresh, matches);
     busy = false;
     render();
+    paintBar();
   }
 
   // New listings trigger the alert, but it always points to the best current listing of the items concerned
   function notify(fresh, matches) {
     const ids = new Set(fresh.map((m) => m.id));
     const a = matches.filter((m) => ids.has(m.id)).sort((x, y) => x.price / x.max - y.price / y.max)[0];
-    const text = `${a.name}: ${money(a.price)} x${a.qty} (${a.src}${a.seller ? ", " + a.seller : ""})`
-      + (fresh.length > 1 ? ` · ${fresh.length} new listings` : "");
+    const text = listingText(a) + (fresh.length > 1 ? ` · ${fresh.length} new listings` : "");
     if (typeof GM_notification === "function") {
       try { GM_notification({ title: "Price Watch", text, onclick: () => window.open(a.url, "_blank") }); } catch {}
     }
-    toast(text, a.url);
+    store.set("bar", [...ids]);
   }
 
   // ---------- UI ----------
@@ -141,13 +141,36 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   let panel = null, open = false, tab = store.get("key", "") ? "watch" : "settings";
 
-  function toast(text, url) {
-    const t = document.createElement("a");
-    t.id = "price-watch-toast";
-    t.href = url; t.target = "_blank"; t.textContent = "Price Watch: " + text;
-    document.getElementById("price-watch-toast")?.remove();
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 20000);
+  // Alert bar, styled like Torn Oracle's export alert: on top of the page content, every Torn tab, as long as
+  // the alerted item has a listing under its max; the close button hides it until the next alert
+  const BAR_ID = "price-watch-bar";
+  const listingText = (a) => `${a.name}: ${money(a.price)} x${a.qty} (${a.src}${a.seller ? ", " + a.seller : ""})`;
+
+  function paintBar() {
+    const ids = store.get("bar", []), items = store.get("items", []);
+    const maxOf = Object.fromEntries(items.map((i) => [i.id, i.max]));
+    const a = store.get("matches", []).filter((m) => ids.includes(m.id) && m.price <= maxOf[m.id])
+      .sort((x, y) => x.price / maxOf[x.id] - y.price / maxOf[y.id])[0];
+    let bar = document.getElementById(BAR_ID);
+    if (!a) { bar?.remove(); return; }
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = BAR_ID;
+      bar.addEventListener("click", (e) => {
+        if (!e.target.closest("[data-close]")) return;
+        store.set("bar", []);
+        paintBar();
+      });
+    }
+    const wrap = document.querySelector(".content-wrapper");
+    if (wrap) { if (wrap.firstChild !== bar) wrap.insertBefore(bar, wrap.firstChild); }
+    else if (!bar.isConnected) document.body.prepend(bar);
+    bar.classList.toggle("o-dark", document.body.classList.contains("dark-mode"));
+    const html = `<div class="oa-line"><span class="oa-brand">Price Watch</span>
+        <span class="oa-note">Under max price</span>
+        <button type="button" class="oa-x" data-close title="Hide until the next alert">&times;</button></div>
+      <a class="oa-go" href="${esc(a.url)}">${esc(listingText(a))}</a>`;
+    if (bar.dataset.html !== html) { bar.innerHTML = html; bar.dataset.html = html; }
   }
 
   function ensureLauncher() {
@@ -375,12 +398,19 @@
 }
 #${LAUNCHER_ID} button:hover, #${LAUNCHER_ID} button[aria-expanded="true"] { color: #0d9488; background: rgba(13,148,136,.12); }
 #${LAUNCHER_ID} svg { width: 20px; height: 20px; }
-#price-watch-toast {
-  position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2147483647;
-  max-width: calc(100vw - 24px); padding: 10px 14px; border-radius: 10px;
-  background: #0d9488; color: #fff !important; font: 600 13px/1.4 system-ui, sans-serif;
-  box-shadow: 0 10px 30px rgba(0,0,0,.35); text-decoration: none;
-}`;
+#${BAR_ID} { --oa-bg: #fff; --oa-line: #dde3e9; --oa-dim: #4a5763; --oa-accent: #0d9488;
+  position: sticky; top: 0; z-index: 50; box-sizing: border-box; width: 100%; margin: 0 0 8px;
+  padding: 8px 10px; border: 1px solid var(--oa-line); border-radius: 10px; background: var(--oa-bg);
+  color: #10161c; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#${BAR_ID}.o-dark { --oa-bg: #171d24; --oa-line: #2c3742; --oa-dim: #b3c0cd; --oa-accent: #2dd4bf; color: #e7edf3; }
+#${BAR_ID} .oa-line { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+#${BAR_ID} .oa-brand { font-weight: 700; font-size: 11px; color: var(--oa-accent); }
+#${BAR_ID} .oa-note { font-size: 12px; color: var(--oa-dim); flex: 1; }
+#${BAR_ID} .oa-x { background: none; border: 0; color: var(--oa-dim); font-size: 18px; line-height: 1; cursor: pointer; }
+#${BAR_ID} a.oa-go { display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  width: 100%; min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--oa-accent);
+  background: var(--oa-accent); color: #fff; font-size: 15px; font-weight: 700; text-align: center;
+  text-decoration: none; }`;
 
   // ---------- start ----------
 
@@ -389,6 +419,6 @@
   (document.head || document.documentElement).appendChild(style);
   new MutationObserver(ensureLauncher).observe(document.documentElement, { childList: true, subtree: true });
   ensureLauncher();
-  setInterval(poll, TICK_MS);
+  setInterval(() => { poll(); paintBar(); }, TICK_MS);
   poll();
 })();
