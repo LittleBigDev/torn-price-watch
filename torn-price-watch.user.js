@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.4
+// @version      0.5
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -22,7 +22,7 @@
   const LAUNCHER_ID = "price-watch-launcher";
   const TICK_MS = 5000;             // how often each tab checks whether a poll is due
   const POLL_CHOICES = [30, 60, 120, 300];  // seconds, same choices as Stock Watch
-  const SEEN_TTL_MS = 24 * 3600e3;  // an alerted listing stays silent for a day
+  const SEEN_TTL_MS = 24 * 3600e3;  // a listing alerts once, then again only after a day out of sight
   const CATALOG_TTL_MS = 7 * 24 * 3600e3;
 
   const store = {
@@ -66,7 +66,7 @@
     const d = await tornAPI(`market/${id}/itemmarket`);
     return (d.itemmarket?.listings || []).map((l) => ({
       src: "Market", price: l.price, qty: l.amount, seller: "",
-      key: `im:${id}:${l.price}:${l.amount}`,
+      key: `im:${id}:${l.price}`,  // no seller in the API: a partial buy must not re-alert
       url: `https://www.torn.com/page.php?sid=ItemMarket#/market/view=search&itemID=${id}`,
     }));
   }
@@ -92,7 +92,9 @@
     if (!force && Date.now() - store.get("lastRun", 0) < every) return;
     busy = true;
     store.set("lastRun", Date.now());
-    const best = store.get("best", {}), seen = store.get("seen", {}), alerts = [];
+    // matches = listings under the max at this check; a source that failed keeps its previous matches
+    const best = store.get("best", {}), seen = store.get("seen", {}), old = store.get("matches", []);
+    const matches = [], fresh = [];
     let error = "";
     for (const it of items) {
       const res = await Promise.allSettled([itemMarket(it.id), bazaars(it.id)]);
@@ -100,20 +102,23 @@
       res.forEach((r) => { if (r.status === "rejected") error = String(r.reason?.message || r.reason); });
       const low = (l) => (l && l.length ? Math.min(...l.map((x) => x.price)) : null);
       best[it.id] = { im: low(im) ?? best[it.id]?.im ?? null, bz: low(bz) ?? best[it.id]?.bz ?? null, t: Date.now() };
-      for (const l of [...(im || []), ...(bz || [])]) {
-        if (l.price > it.max || seen[l.key]) continue;
-        seen[l.key] = Date.now();
-        alerts.push({ ...l, name: it.name, max: it.max });
-      }
+      [[im, "Market"], [bz, "Bazaar"]].forEach(([list, src]) => {
+        if (!list) return matches.push(...old.filter((m) => m.id === it.id && m.src === src));
+        for (const l of list) {
+          if (l.price > it.max) continue;
+          const m = { ...l, id: it.id, name: it.name, max: it.max };
+          matches.push(m);
+          if (!seen[l.key]) fresh.push(m);
+          seen[l.key] = Date.now();
+        }
+      });
     }
     for (const k of Object.keys(seen)) if (Date.now() - seen[k] > SEEN_TTL_MS) delete seen[k];
     store.set("best", best);
     store.set("seen", seen);
     store.set("error", error);
-    if (alerts.length) {
-      store.set("alerts", [...alerts, ...store.get("alerts", [])].slice(0, 50));
-      notify(alerts);
-    }
+    store.set("matches", matches);
+    if (fresh.length) notify(fresh);
     busy = false;
     render();
   }
@@ -172,7 +177,10 @@
     panel.classList.toggle("is-open", open);
     document.querySelector(`#${LAUNCHER_ID} button`)?.setAttribute("aria-expanded", String(open));
     if (!open) return;
-    const items = store.get("items", []), best = store.get("best", {}), alerts = store.get("alerts", []);
+    const items = store.get("items", []), best = store.get("best", {});
+    const maxOf = Object.fromEntries(items.map((i) => [i.id, i.max]));
+    const matches = store.get("matches", []).filter((m) => m.price <= maxOf[m.id])
+      .sort((a, b) => a.price / maxOf[a.id] - b.price / maxOf[b.id]);
     const key = store.get("key", ""), error = store.get("error", ""), last = store.get("lastRun", 0);
     const paused = store.get("paused", false);
     const rows = items.map((it) => {
@@ -183,7 +191,7 @@
         <td class="num ${hit(b.im)}">${money(b.im)}</td><td class="num ${hit(b.bz)}">${money(b.bz)}</td>
         <td><button class="o-icon" data-del="${it.id}" title="Remove">✕</button></td></tr>`;
     }).join("");
-    const alertRows = alerts.slice(0, 10).map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${esc(a.name)}</a>
+    const alertRows = matches.slice(0, 20).map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${esc(a.name)}</a>
         <span class="o-sub">${a.src}${a.seller ? " · " + esc(a.seller) : ""}</span></td>
         <td class="num go">${money(a.price)}</td><td class="num">x${a.qty}</td></tr>`).join("");
     panel.innerHTML = `
@@ -212,11 +220,10 @@
           <input type="number" name="max" placeholder="Max price" min="1" required>
           <button class="o-btn is-primary">Add</button></form>
         <datalist id="price-watch-items"></datalist>
-        <h4>Recent alerts</h4>
-        <div class="o-scroll"><table><tbody>${alertRows || `<tr><td class="o-empty">None yet.</td></tr>`}</tbody></table></div>
+        <h4>Under max price${matches.length ? ` (${matches.length})` : ""}</h4>
+        <div class="o-scroll"><table><tbody>${alertRows || `<tr><td class="o-empty">Nothing under your max price.</td></tr>`}</tbody></table></div>
         <div class="o-acts">
           <button class="o-btn" data-act="check">Check now</button>
-          ${alerts.length ? `<button class="o-link" data-act="clear">Clear alerts</button>` : ""}
         </div>`}
       </div>`;
     fillCatalog();
@@ -241,7 +248,6 @@
     } else if (b.dataset.act === "close") { open = false; render(); }
     else if (b.dataset.act === "check") poll(true);
     else if (b.dataset.act === "pause") { store.set("paused", !store.get("paused", false)); render(); }
-    else if (b.dataset.act === "clear") { store.set("alerts", []); render(); }
   }
 
   async function onSubmit(e) {
@@ -273,6 +279,7 @@
     const t = e.target;
     if (t.classList.contains("o-max")) {
       store.set("items", store.get("items", []).map((i) => (String(i.id) === t.dataset.id ? { ...i, max: Number(t.value) } : i)));
+      render();
     } else if (t.name === "poll") store.set("pollSeconds", Number(t.value));
   }
 
