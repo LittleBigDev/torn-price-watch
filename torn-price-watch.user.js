@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.8
+// @version      0.9
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -118,16 +118,17 @@
     store.set("seen", seen);
     store.set("error", error);
     store.set("matches", matches);
-    if (fresh.length) notify(fresh);
+    if (fresh.length) notify(fresh, matches);
     busy = false;
     render();
   }
 
-  function notify(alerts) {
-    alerts.sort((a, b) => a.price / a.max - b.price / b.max);
-    const a = alerts[0];
+  // New listings trigger the alert, but it always points to the best current listing of the items concerned
+  function notify(fresh, matches) {
+    const ids = new Set(fresh.map((m) => m.id));
+    const a = matches.filter((m) => ids.has(m.id)).sort((x, y) => x.price / x.max - y.price / y.max)[0];
     const text = `${a.name}: ${money(a.price)} x${a.qty} (${a.src}${a.seller ? ", " + a.seller : ""})`
-      + (alerts.length > 1 ? ` +${alerts.length - 1} more` : "");
+      + (fresh.length > 1 ? ` · ${fresh.length} new listings` : "");
     if (typeof GM_notification === "function") {
       try { GM_notification({ title: "Price Watch", text, onclick: () => window.open(a.url, "_blank") }); } catch {}
     }
