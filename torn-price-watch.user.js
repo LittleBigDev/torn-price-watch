@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.2
+// @version      0.3
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -88,7 +88,7 @@
   async function poll(force = false) {
     const items = store.get("items", []);
     const every = pollSeconds() * 1000;
-    if (busy || !items.length || !store.get("key", "")) return;
+    if (busy || !items.length || !store.get("key", "") || (!force && store.get("paused", false))) return;
     if (!force && Date.now() - store.get("lastRun", 0) < every) return;
     busy = true;
     store.set("lastRun", Date.now());
@@ -174,6 +174,7 @@
     if (!open) return;
     const items = store.get("items", []), best = store.get("best", {}), alerts = store.get("alerts", []);
     const key = store.get("key", ""), error = store.get("error", ""), last = store.get("lastRun", 0);
+    const paused = store.get("paused", false);
     const rows = items.map((it) => {
       const b = best[it.id] || {};
       const hit = (p) => (p != null && p <= it.max ? "go" : "");
@@ -186,9 +187,10 @@
         <span class="o-sub">${a.src}${a.seller ? " · " + esc(a.seller) : ""}</span></td>
         <td class="num go">${money(a.price)}</td><td class="num">x${a.qty}</td></tr>`).join("");
     panel.innerHTML = `
-      <div class="o-head"><span class="o-dot ${error ? "is-bad" : key ? "is-live" : "is-warn"}"></span>
+      <div class="o-head"><span class="o-dot ${error ? "is-bad" : key && !paused ? "is-live" : "is-warn"}"></span>
         <span class="o-brand">Price Watch</span>
-        <span class="o-head-line">${error ? esc(error) : last ? "Last check " + new Date(last).toLocaleTimeString() : "Not checked yet"}</span>
+        <span class="o-head-line">${paused ? "Paused" : error ? esc(error) : last ? "Last check " + new Date(last).toLocaleTimeString() : "Not checked yet"}</span>
+        <button class="o-btn ${paused ? "is-primary" : ""}" data-act="pause">${paused ? "Resume" : "Pause"}</button>
         <button class="o-icon" data-act="close" title="Close">✕</button></div>
       <div class="o-body">
         ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key below to start.</div>`}
@@ -231,6 +233,7 @@
       render();
     } else if (b.dataset.act === "close") { open = false; render(); }
     else if (b.dataset.act === "check") poll(true);
+    else if (b.dataset.act === "pause") { store.set("paused", !store.get("paused", false)); render(); }
     else if (b.dataset.act === "clear") { store.set("alerts", []); render(); }
   }
 
