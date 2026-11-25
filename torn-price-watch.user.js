@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.5
+// @version      0.6
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -213,13 +213,13 @@
         <p class="o-note">A <b>Public Only</b> key is enough. It stays in your userscript manager and is only sent to api.torn.com.</p>
         <p class="o-note">Market: Torn API. Bazaars: weav3r.dev (community data, can lag a few minutes). Nothing is ever bought for you.</p>` : `
         ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key in Settings to start.</div>`}
-        <div class="o-scroll"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="5" class="o-empty">No item watched yet.</td></tr>`}</tbody></table></div>
-        <form class="o-acts" data-form="add">
+        <form class="o-acts o-add" data-form="add">
           <input type="text" name="name" list="price-watch-items" placeholder="Item name" class="o-grow" required>
           <input type="number" name="max" placeholder="Max price" min="1" required>
           <button class="o-btn is-primary">Add</button></form>
         <datalist id="price-watch-items"></datalist>
+        <div class="o-scroll"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="5" class="o-empty">No item watched yet.</td></tr>`}</tbody></table></div>
         <h4>Under max price${matches.length ? ` (${matches.length})` : ""}</h4>
         <div class="o-scroll"><table><tbody>${alertRows || `<tr><td class="o-empty">Nothing under your max price.</td></tr>`}</tbody></table></div>
         <div class="o-acts">
@@ -359,6 +359,7 @@
 #price-watch-panel input:focus-visible, #price-watch-panel button:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 1px; }
 #price-watch-panel .o-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 #price-watch-panel .o-grow { flex: 1 1 auto; }
+#price-watch-panel .o-add { margin: 0 0 10px; }
 #price-watch-panel .o-note { margin: 10px 0 0; font-size: 11px; color: var(--o-dim); }
 #price-watch-panel .o-banner { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; background: var(--o-bad-soft); color: var(--o-bad); font-size: 12px; }
 #${LAUNCHER_ID} { list-style: none; display: inline-flex; width: 34px; height: 34px; margin: 0; padding: 0; background: none; }
