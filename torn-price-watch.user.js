@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.1
+// @version      1.2
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -78,7 +78,7 @@
     return (d.listings || []).map((l) => ({
       src: "Bazaar", price: l.price, qty: l.quantity, seller: l.player_name,
       key: `bz:${l.player_id}:${id}:${l.price}`,
-      url: `https://www.torn.com/bazaar.php?userId=${l.player_id}`,
+      url: `https://www.torn.com/bazaar.php?userId=${l.player_id}&pwItem=${id}&pwPrice=${l.price}#/`,
     }));
   }
 
@@ -352,6 +352,27 @@
     else if (t.name === "shown") { store.set("shown", Number(t.value)); render(); }
   }
 
+  // ---------- bazaar page: outline the listing a Price Watch link points to ----------
+  // No auto-scroll: TornW3B removed it as against Torn's scripting rules. The list is virtualized and
+  // recycles its rows, so the outline is re-applied on every change until the player scrolls to the item.
+
+  function markBazaarListing() {
+    const q = new URLSearchParams(location.search), id = q.get("pwItem"), price = Number(q.get("pwPrice"));
+    if (location.pathname !== "/bazaar.php" || !/^\d+$/.test(id)) return;
+    const paint = () => {
+      const cards = [...document.querySelectorAll('[data-testid="bazaar-items"] [data-testid="item"]')];
+      const mine = cards.filter((c) => c.querySelector(`img[src*="/images/items/${id}/"]`));
+      const atPrice = mine.filter((c) => c.innerText.includes(money(price)));
+      const hit = new Set(atPrice.length ? atPrice : mine);
+      for (const c of cards) if (c.classList.contains("pw-hit") !== hit.has(c)) c.classList.toggle("pw-hit");
+    };
+    let queued = false;
+    new MutationObserver(() => {
+      if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; paint(); }); }
+    }).observe(document.body, { childList: true, subtree: true });
+    paint();
+  }
+
   // ---------- style (from Torn Oracle: Travel) ----------
 
   const CSS = `
@@ -459,7 +480,8 @@
 #${BAR_ID} a.oa-go { display: flex; align-items: center; justify-content: center; box-sizing: border-box;
   width: 100%; min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--oa-accent);
   background: var(--oa-accent); color: #fff; font-size: 15px; font-weight: 700; text-align: center;
-  text-decoration: none; }`;
+  text-decoration: none; }
+.pw-hit { outline: 3px solid #22c55e !important; outline-offset: -3px; box-shadow: 0 0 0 4px rgba(34,197,94,.35) !important; }`;
 
   // ---------- start ----------
 
@@ -468,6 +490,7 @@
   (document.head || document.documentElement).appendChild(style);
   new MutationObserver(ensureLauncher).observe(document.documentElement, { childList: true, subtree: true });
   ensureLauncher();
+  markBazaarListing();
   if (open) render();  // reopen the panel if it was open on the previous page
   setInterval(() => { poll(); paintBar(); }, TICK_MS);
   poll();
