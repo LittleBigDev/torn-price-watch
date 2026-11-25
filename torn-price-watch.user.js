@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.7
+// @version      0.8
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -283,6 +283,7 @@
     if (t.classList.contains("o-max")) {
       store.set("items", store.get("items", []).map((i) => (String(i.id) === t.dataset.id ? { ...i, max: Number(t.value) } : i)));
       render();
+      poll(true);  // a higher max needs listings the last check did not keep
     } else if (t.name === "poll") store.set("pollSeconds", Number(t.value));
   }
 
