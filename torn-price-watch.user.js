@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.2
+// @version      1.3
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -353,18 +353,20 @@
   }
 
   // ---------- bazaar page: outline the listing a Price Watch link points to ----------
-  // No auto-scroll: TornW3B removed it as against Torn's scripting rules. The list is virtualized and
-  // recycles its rows, so the outline is re-applied on every change until the player scrolls to the item.
+  // Scrolls to it once, like TornTools' Bazaar Item Highlight. The list is virtualized and recycles its rows,
+  // so the outline is re-applied on every change.
 
   function markBazaarListing() {
     const q = new URLSearchParams(location.search), id = q.get("pwItem"), price = Number(q.get("pwPrice"));
     if (location.pathname !== "/bazaar.php" || !/^\d+$/.test(id)) return;
+    let scrolled = false;
     const paint = () => {
       const cards = [...document.querySelectorAll('[data-testid="bazaar-items"] [data-testid="item"]')];
       const mine = cards.filter((c) => c.querySelector(`img[src*="/images/items/${id}/"]`));
       const atPrice = mine.filter((c) => c.innerText.includes(money(price)));
       const hit = new Set(atPrice.length ? atPrice : mine);
       for (const c of cards) if (c.classList.contains("pw-hit") !== hit.has(c)) c.classList.toggle("pw-hit");
+      if (!scrolled && hit.size) { scrolled = true; [...hit][0].scrollIntoView({ behavior: "smooth", block: "center" }); }
     };
     let queued = false;
     new MutationObserver(() => {
