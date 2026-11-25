@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.6
+// @version      0.7
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -179,7 +179,10 @@
     if (!open) return;
     const items = store.get("items", []), best = store.get("best", {});
     const maxOf = Object.fromEntries(items.map((i) => [i.id, i.max]));
+    const perItem = {};  // the 3 cheapest listings of each item
     const matches = store.get("matches", []).filter((m) => m.price <= maxOf[m.id])
+      .sort((a, b) => a.price - b.price)
+      .filter((m) => (perItem[m.id] = (perItem[m.id] || 0) + 1) <= 3)
       .sort((a, b) => a.price / maxOf[a.id] - b.price / maxOf[b.id]);
     const key = store.get("key", ""), error = store.get("error", ""), last = store.get("lastRun", 0);
     const paused = store.get("paused", false);
@@ -191,7 +194,7 @@
         <td class="num ${hit(b.im)}">${money(b.im)}</td><td class="num ${hit(b.bz)}">${money(b.bz)}</td>
         <td><button class="o-icon" data-del="${it.id}" title="Remove">✕</button></td></tr>`;
     }).join("");
-    const alertRows = matches.slice(0, 20).map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${esc(a.name)}</a>
+    const alertRows = matches.map((a) => `<tr><td><a href="${esc(a.url)}" target="_blank">${esc(a.name)}</a>
         <span class="o-sub">${a.src}${a.seller ? " · " + esc(a.seller) : ""}</span></td>
         <td class="num go">${money(a.price)}</td><td class="num">x${a.qty}</td></tr>`).join("");
     panel.innerHTML = `
