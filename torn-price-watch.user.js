@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.3
+// @version      0.4
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -133,7 +133,7 @@
 
   const money = (n) => (n == null ? "-" : "$" + Number(n).toLocaleString("en-US"));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  let panel = null, open = false;
+  let panel = null, open = false, tab = store.get("key", "") ? "watch" : "settings";
 
   function toast(text, url) {
     const t = document.createElement("a");
@@ -192,8 +192,19 @@
         <span class="o-head-line">${paused ? "Paused" : error ? esc(error) : last ? "Last check " + new Date(last).toLocaleTimeString() : "Not checked yet"}</span>
         <button class="o-btn ${paused ? "is-primary" : ""}" data-act="pause">${paused ? "Resume" : "Pause"}</button>
         <button class="o-icon" data-act="close" title="Close">✕</button></div>
-      <div class="o-body">
-        ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key below to start.</div>`}
+      <div class="o-tabs">
+        <button class="o-tab ${tab === "watch" ? "is-on" : ""}" data-tab="watch">Watch</button>
+        <button class="o-tab ${tab === "settings" ? "is-on" : ""}" data-tab="settings">Settings</button></div>
+      <div class="o-body">${tab === "settings" ? `
+        <h4>Check every</h4>
+        <div class="o-acts"><select name="poll">${POLL_CHOICES.map((s) => `<option value="${s}"${s === pollSeconds() ? " selected" : ""}>${s < 60 ? s + " s" : s / 60 + " min"}</option>`).join("")}</select></div>
+        <h4>API key</h4>
+        <form class="o-acts" data-form="key">
+          <input type="password" name="key" placeholder="Public Only API key" value="${esc(key)}" class="o-grow">
+          <button class="o-btn">Save key</button></form>
+        <p class="o-note">A <b>Public Only</b> key is enough. It stays in your userscript manager and is only sent to api.torn.com.</p>
+        <p class="o-note">Market: Torn API. Bazaars: weav3r.dev (community data, can lag a few minutes). Nothing is ever bought for you.</p>` : `
+        ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key in Settings to start.</div>`}
         <div class="o-scroll"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
           <tbody>${rows || `<tr><td colspan="5" class="o-empty">No item watched yet.</td></tr>`}</tbody></table></div>
         <form class="o-acts" data-form="add">
@@ -205,13 +216,8 @@
         <div class="o-scroll"><table><tbody>${alertRows || `<tr><td class="o-empty">None yet.</td></tr>`}</tbody></table></div>
         <div class="o-acts">
           <button class="o-btn" data-act="check">Check now</button>
-          <label>Every <select name="poll">${POLL_CHOICES.map((s) => `<option value="${s}"${s === pollSeconds() ? " selected" : ""}>${s < 60 ? s + " s" : s / 60 + " min"}</option>`).join("")}</select></label>
           ${alerts.length ? `<button class="o-link" data-act="clear">Clear alerts</button>` : ""}
-        </div>
-        <form class="o-acts" data-form="key">
-          <input type="password" name="key" placeholder="Public Only API key" value="${esc(key)}" class="o-grow">
-          <button class="o-btn">Save key</button></form>
-        <p class="o-note">Market: Torn API. Bazaars: weav3r.dev (community data, can lag a few minutes). Nothing is ever bought for you.</p>
+        </div>`}
       </div>`;
     fillCatalog();
   }
@@ -228,7 +234,8 @@
   function onClick(e) {
     const b = e.target.closest("button");
     if (!b) return;
-    if (b.dataset.del) {
+    if (b.dataset.tab) { tab = b.dataset.tab; render(); }
+    else if (b.dataset.del) {
       store.set("items", store.get("items", []).filter((i) => String(i.id) !== b.dataset.del));
       render();
     } else if (b.dataset.act === "close") { open = false; render(); }
@@ -243,6 +250,7 @@
     if (f.dataset.form === "key") {
       store.set("key", String(data.get("key")).trim());
       store.set("error", "");
+      tab = "watch";
       render();
       return;
     }
@@ -307,6 +315,14 @@
 #price-watch-panel .o-dot.is-bad { background: var(--o-bad); }
 #price-watch-panel .o-head-line { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--o-dim); }
 #price-watch-panel .o-body { padding: 10px; overflow-y: auto; }
+#price-watch-panel .o-tabs { display: flex; gap: 2px; padding: 6px 6px 0; background: var(--o-bg-raise); border-bottom: 1px solid var(--o-line); }
+#price-watch-panel .o-tab {
+  appearance: none; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--o-dim);
+  font: inherit; font-weight: 600; padding: 7px 11px; border-radius: 8px 8px 0 0; cursor: pointer;
+}
+#price-watch-panel .o-tab:hover { color: var(--o-text); background: var(--o-bg-sunk); }
+#price-watch-panel .o-tab.is-on { color: var(--o-accent); border-bottom-color: var(--o-accent); background: var(--o-bg); }
+#price-watch-panel .o-body > h4:first-child { margin-top: 0; }
 #price-watch-panel h4 { margin: 14px 0 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--o-faint); }
 #price-watch-panel .o-scroll { overflow-x: auto; }
 #price-watch-panel table { width: 100%; border-collapse: collapse; font-size: 12px; }
