@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      0.1
+// @version      0.2
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -20,7 +20,8 @@
   "use strict";
 
   const LAUNCHER_ID = "price-watch-launcher";
-  const TICK_MS = 15000;            // how often each tab checks whether a poll is due
+  const TICK_MS = 5000;             // how often each tab checks whether a poll is due
+  const POLL_CHOICES = [30, 60, 120, 300];  // seconds, same choices as Stock Watch
   const SEEN_TTL_MS = 24 * 3600e3;  // an alerted listing stays silent for a day
   const CATALOG_TTL_MS = 7 * 24 * 3600e3;
 
@@ -82,10 +83,11 @@
   // ---------- polling (one tab at a time, shared through GM storage) ----------
 
   let busy = false;
+  const pollSeconds = () => (POLL_CHOICES.includes(store.get("pollSeconds")) ? store.get("pollSeconds") : 30);
 
   async function poll(force = false) {
     const items = store.get("items", []);
-    const every = store.get("interval", 2) * 60e3;
+    const every = pollSeconds() * 1000;
     if (busy || !items.length || !store.get("key", "")) return;
     if (!force && Date.now() - store.get("lastRun", 0) < every) return;
     busy = true;
@@ -201,7 +203,7 @@
         <div class="o-scroll"><table><tbody>${alertRows || `<tr><td class="o-empty">None yet.</td></tr>`}</tbody></table></div>
         <div class="o-acts">
           <button class="o-btn" data-act="check">Check now</button>
-          <label>Every <input type="number" name="interval" min="1" value="${store.get("interval", 2)}" style="width:4em"> min</label>
+          <label>Every <select name="poll">${POLL_CHOICES.map((s) => `<option value="${s}"${s === pollSeconds() ? " selected" : ""}>${s < 60 ? s + " s" : s / 60 + " min"}</option>`).join("")}</select></label>
           ${alerts.length ? `<button class="o-link" data-act="clear">Clear alerts</button>` : ""}
         </div>
         <form class="o-acts" data-form="key">
@@ -260,7 +262,7 @@
     const t = e.target;
     if (t.classList.contains("o-max")) {
       store.set("items", store.get("items", []).map((i) => (String(i.id) === t.dataset.id ? { ...i, max: Number(t.value) } : i)));
-    } else if (t.name === "interval") store.set("interval", Math.max(1, Number(t.value) || 2));
+    } else if (t.name === "poll") store.set("pollSeconds", Number(t.value));
   }
 
   // ---------- style (from Torn Oracle: Travel) ----------
@@ -322,7 +324,7 @@
 #price-watch-panel button.o-icon { appearance: none; border: 0; background: transparent; color: var(--o-dim); padding: 4px 6px; border-radius: 6px; cursor: pointer; }
 #price-watch-panel button.o-icon:hover { background: var(--o-bg-sunk); color: var(--o-accent); }
 #price-watch-panel button.o-link { appearance: none; border: 0; background: transparent; font: inherit; font-size: 11px; color: var(--o-accent); cursor: pointer; text-decoration: underline; }
-#price-watch-panel input[type=text], #price-watch-panel input[type=number], #price-watch-panel input[type=password] {
+#price-watch-panel input[type=text], #price-watch-panel input[type=number], #price-watch-panel input[type=password], #price-watch-panel select {
   font: inherit; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--o-line);
   background: var(--o-bg); color: var(--o-text); max-width: 100%; min-width: 0;
 }
