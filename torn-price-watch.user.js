@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.6
+// @version      1.7
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -251,7 +251,7 @@
       <div class="o-tabs">
         <button class="o-tab ${tab === "watch" ? "is-on" : ""}" data-tab="watch">Watch</button>
         <button class="o-tab ${tab === "settings" ? "is-on" : ""}" data-tab="settings">Settings</button></div>
-      <div class="o-body">${tab === "settings" ? `
+      <div class="o-body${tab === "watch" ? " is-watch" : ""}">${tab === "settings" ? `
         <h4>Check every</h4>
         <div class="o-acts"><select name="poll">${POLL_CHOICES.map((s) => `<option value="${s}"${s === pollSeconds() ? " selected" : ""}>${s < 60 ? s + " s" : s / 60 + " min"}</option>`).join("")}</select></div>
         <h4>API key</h4>
@@ -274,7 +274,7 @@
           <input type="number" name="max" placeholder="Max price" min="1" required>
           <button class="o-btn is-primary">Add</button></form>
         <datalist id="price-watch-items"></datalist>
-        <div class="o-scroll"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
+        <div class="o-scroll o-list"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
           <tbody>${rows || `<tr><td colspan="5" class="o-empty">No item watched yet.</td></tr>`}</tbody></table></div>
         <h4 class="o-h-pick">Under max price${matches.length ? ` (${matches.length})` : ""}
           ${items.length ? `<select name="shown">${items.map((i) => `<option value="${i.id}"${i.id === shownId ? " selected" : ""}>${esc(i.name)}</option>`).join("")}</select>` : ""}</h4>
@@ -364,7 +364,7 @@
   --o-go: #047857; --o-warn: #b45309; --o-bad: #b91c1c; --o-bad-soft: #fee2e2;
   --o-radius: 10px;
   position: fixed; right: 18px; bottom: 18px; z-index: 2147483646;
-  width: min(420px, calc(100vw - 24px)); max-height: min(650px, calc(100vh - 36px));
+  width: min(420px, calc(100vw - 24px)); max-height: min(650px, calc(100vh - 36px)); max-height: min(650px, calc(100dvh - 36px));
   display: none; flex-direction: column; box-sizing: border-box;
   border: 1px solid var(--o-line); border-radius: var(--o-radius);
   background: var(--o-bg); color: var(--o-text); box-shadow: 0 18px 50px rgba(0,0,0,.35);
@@ -404,6 +404,11 @@
 #price-watch-panel .o-body > h4:first-child { margin-top: 0; }
 #price-watch-panel h4 { margin: 14px 0 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--o-faint); }
 #price-watch-panel .o-scroll { overflow-x: auto; }
+/* Watch tab: only the watched list scrolls, the rest stays in view */
+#price-watch-panel .o-body.is-watch { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+#price-watch-panel .o-body.is-watch > * { flex: 0 0 auto; }
+#price-watch-panel .o-body.is-watch > .o-list { flex: 1 1 auto; min-height: 110px; overflow-y: auto; }
+#price-watch-panel .o-list thead th { position: sticky; top: 0; z-index: 1; background: var(--o-bg); }
 #price-watch-panel table { width: 100%; border-collapse: collapse; font-size: 12px; }
 #price-watch-panel th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--o-faint); padding: 6px 8px; border-bottom: 1px solid var(--o-line); white-space: nowrap; }
 #price-watch-panel td { padding: 7px 8px; border-bottom: 1px solid var(--o-line); vertical-align: middle; }
