@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.7
+// @version      1.8
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -364,7 +364,7 @@
   --o-go: #047857; --o-warn: #b45309; --o-bad: #b91c1c; --o-bad-soft: #fee2e2;
   --o-radius: 10px;
   position: fixed; right: 18px; bottom: 18px; z-index: 2147483646;
-  width: min(420px, calc(100vw - 24px)); max-height: min(650px, calc(100vh - 36px)); max-height: min(650px, calc(100dvh - 36px));
+  width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 36px); max-height: calc(100dvh - 36px);
   display: none; flex-direction: column; box-sizing: border-box;
   border: 1px solid var(--o-line); border-radius: var(--o-radius);
   background: var(--o-bg); color: var(--o-text); box-shadow: 0 18px 50px rgba(0,0,0,.35);
