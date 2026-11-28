@@ -8,7 +8,7 @@ With Violentmonkey, Tampermonkey or Torn PDA, open [torn-price-watch.user.js](ht
 
 ## Use
 
-Click the price tag icon next to your status icons. In **Settings**, enter a **Public Only** API key and pick how often to check (30 s, 1, 2 or 5 min). In **Watch**, add items with their max price.
+Click the price tag icon next to your status icons. In **Settings**, enter a **Public Only** API key and pick how often to check (30 s, 1, 2 or 5 min). In **Watch**, add items with their max price, set as a percent of market value (**%**), market value plus or minus a dollar amount (**±$**, e.g. -50000), or a fixed price (**$**). Switching mode keeps the same price. A % or ±$ watch follows the market value (refreshed daily) and never alerts on an item without one.
 
 - The watch list shows the cheapest item market and bazaar price of each item, green when under your max; click a price to open that listing. With [TornTools](https://github.com/Mephiles/torntools_extension), bazaar links outline the item and scroll to it.
 - Below it, pick an item to see its 5 cheapest listings under your max, refreshed at every check.

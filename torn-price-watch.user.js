@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Price Watch
 // @namespace    https://github.com/LittleBigDev/torn-price-watch
-// @version      1.8
+// @version      1.9
 // @description  Alerts when a watched item is listed under your max price, on the item market or in a bazaar.
 // @author       Workaround
 // @license      MIT
@@ -31,6 +31,29 @@
     get: (k, d) => { try { const v = GM_getValue(k); return v === undefined ? d : v; } catch { return d; } },
     set: (k, v) => { try { GM_setValue(k, v); } catch {} },
   };
+
+  // ---------- watches: trigger price as % of market value, market value ± $, or a fixed price ----------
+
+  const MODES = [["pct", "%", "Percent of market value (e.g. 95% of market)"],
+    ["delta", "±$", "Market value plus or minus a dollar amount"], ["fixed", "$", "A fixed dollar price"]];
+  const isMode = (m) => MODES.some(([k]) => k === m);
+  // watches saved before 1.9 only have a fixed max
+  const watches = () => store.get("items", []).map((i) => (isMode(i.mode) ? i : { id: i.id, name: i.name, mode: "fixed", value: i.max }));
+  const marketValues = () => Object.fromEntries((store.get("catalog", null)?.items || []).map(([id, , v]) => [id, v]));
+  // null when the price depends on a market value the API does not give: such a watch never alerts
+  function priceOf(it, mv) {
+    if (it.mode === "fixed") return it.value;
+    if (!mv[it.id]) return null;
+    return Math.round(it.mode === "pct" ? mv[it.id] * it.value / 100 : mv[it.id] + it.value);
+  }
+  // value of a mode that gives the same trigger price, so switching mode keeps the price
+  function convert(it, mode, mv) {
+    const p = priceOf(it, mv), v = mv[it.id];
+    if (p == null || (mode !== "fixed" && !v)) return it.value;
+    return mode === "fixed" ? p : mode === "pct" ? Math.round(p / v * 1000) / 10 : p - v;
+  }
+  const maxMap = () => { const mv = marketValues(); return Object.fromEntries(watches().map((i) => [i.id, priceOf(i, mv)])); };
+  const validValue = (mode, v) => Number.isFinite(v) && (mode === "delta" || v > 0);
 
   // ---------- network ----------
 
@@ -88,7 +111,7 @@
   const pollSeconds = () => (POLL_CHOICES.includes(store.get("pollSeconds")) ? store.get("pollSeconds") : 30);
 
   async function poll(force = false) {
-    const items = store.get("items", []);
+    const items = watches();
     const every = pollSeconds() * 1000;
     if (busy || !items.length || !store.get("key", "") || (!force && store.get("paused", false))) return;
     if (!force && Date.now() - store.get("lastRun", 0) < every) return;
@@ -98,7 +121,10 @@
     const best = store.get("best", {}), seen = store.get("seen", {}), old = store.get("matches", []);
     const matches = [], fresh = [];
     let error = "";
+    try { await catalog(); } catch {}  // market values of % and ±$ watches; a failure keeps the stored ones
+    const mv = marketValues();
     for (const it of items) {
+      const max = priceOf(it, mv);
       const res = await Promise.allSettled([itemMarket(it.id), bazaars(it.id)]);
       const [im, bz] = res.map((r) => (r.status === "fulfilled" ? r.value : null));
       res.forEach((r) => { if (r.status === "rejected") error = String(r.reason?.message || r.reason); });
@@ -109,8 +135,8 @@
       [[im, "Market"], [bz, "Bazaar"]].forEach(([list, src]) => {
         if (!list) return matches.push(...old.filter((m) => m.id === it.id && m.src === src));
         for (const l of list) {
-          if (l.price > it.max) continue;
-          const m = { ...l, id: it.id, name: it.name, max: it.max };
+          if (max == null || l.price > max) continue;
+          const m = { ...l, id: it.id, name: it.name, max };
           matches.push(m);
           if (!seen[l.key]) fresh.push(m);
           seen[l.key] = Date.now();
@@ -145,17 +171,22 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   let panel = null, open = store.get("open", false), tab = store.get("key", "") ? "watch" : "settings";
   let shareText = "", shareMsg = "";  // kept across re-renders (a poll redraws the panel)
+  const modeButtons = (mode, id) => `<span class="o-seg">${MODES.map(([k, label, tip]) =>
+    `<button type="button" class="${k === mode ? "is-on" : ""}" data-mode="${k}" data-id="${id}" title="${esc(tip)}">${label}</button>`).join("")}</span>`;
+  const PLACEHOLDERS = { pct: "% of market", delta: "± $", fixed: "Max price" };
+  const addMode = () => (isMode(store.get("addMode")) ? store.get("addMode") : "pct");
 
   // Shared settings: watched items and check interval; the API key is never included
-  const exportShared = () => JSON.stringify({ priceWatch: 1, items: store.get("items", []), pollSeconds: pollSeconds() });
+  const exportShared = () => JSON.stringify({ priceWatch: 1, items: watches(), pollSeconds: pollSeconds() });
   function importShared(text) {
     let d;
     try { d = JSON.parse(text); } catch { return "This is not valid JSON."; }
-    const items = Array.isArray(d?.items) ? d.items : null;
-    if (!items || !items.every((i) => Number.isInteger(i?.id) && typeof i.name === "string" && Number(i.max) > 0)) {
+    // settings shared before 1.9 have a fixed max instead of a mode and a value
+    const items = Array.isArray(d?.items) ? d.items.map((i) => (i?.mode ? i : { ...i, mode: "fixed", value: i?.max })) : null;
+    if (!items || !items.every((i) => Number.isInteger(i?.id) && typeof i.name === "string" && isMode(i.mode) && validValue(i.mode, Number(i.value)))) {
       return "These are not Price Watch settings.";
     }
-    store.set("items", items.map((i) => ({ id: i.id, name: i.name, max: Number(i.max) })));
+    store.set("items", items.map((i) => ({ id: i.id, name: i.name, mode: i.mode, value: Number(i.value) })));
     if (POLL_CHOICES.includes(d.pollSeconds)) store.set("pollSeconds", d.pollSeconds);
     return "";
   }
@@ -166,9 +197,8 @@
   const listingText = (a) => `${a.name}: ${money(a.price)} x${a.qty} (${a.src}${a.seller ? ", " + a.seller : ""})`;
 
   function paintBar() {
-    const ids = store.get("bar", []), items = store.get("items", []);
-    const maxOf = Object.fromEntries(items.map((i) => [i.id, i.max]));
-    const a = store.get("matches", []).filter((m) => ids.includes(m.id) && m.price <= maxOf[m.id])
+    const ids = store.get("bar", []), maxOf = maxMap();
+    const a = store.get("matches", []).filter((m) => ids.includes(m.id) && maxOf[m.id] != null && m.price <= maxOf[m.id])
       .sort((x, y) => x.price / maxOf[x.id] - y.price / maxOf[y.id])[0];
     let bar = document.getElementById(BAR_ID);
     if (!a) { bar?.remove(); return; }
@@ -221,21 +251,21 @@
     panel.classList.toggle("is-open", open);
     document.querySelector(`#${LAUNCHER_ID} button`)?.setAttribute("aria-expanded", String(open));
     if (!open) return;
-    const items = store.get("items", []), best = store.get("best", {});
-    const maxOf = Object.fromEntries(items.map((i) => [i.id, i.max]));
+    const items = watches(), best = store.get("best", {}), maxOf = maxMap();
     // listings of the item picked in the dropdown (remembered; first watch if it was removed)
     const shownId = items.some((i) => i.id === store.get("shown")) ? store.get("shown") : items[0]?.id;
-    const matches = store.get("matches", []).filter((m) => m.id === shownId && m.price <= maxOf[m.id])
+    const matches = store.get("matches", []).filter((m) => m.id === shownId && maxOf[shownId] != null && m.price <= maxOf[m.id])
       .sort((a, b) => a.price - b.price);
     const key = store.get("key", ""), error = store.get("error", ""), last = store.get("lastRun", 0);
     const paused = store.get("paused", false);
-    const mv = Object.fromEntries((store.get("catalog", null)?.items || []).map(([id, , v]) => [id, v]));
+    const mv = marketValues();
     const rows = items.map((it) => {
-      const b = best[it.id] || {};
-      const hit = (l) => (l?.price != null && l.price <= it.max ? "go" : "");
+      const b = best[it.id] || {}, max = maxOf[it.id];
+      const hit = (l) => (l?.price != null && max != null && l.price <= max ? "go" : "");
       const cell = (l) => (l?.url ? `<a class="o-best" href="${esc(l.url)}">${money(l.price)}</a>` : money(l?.price ?? (typeof l === "number" ? l : null)));
+      const sub = it.mode === "fixed" ? "" : `<span class="o-sub">${max == null ? "no market value" : "= " + money(max)}</span>`;
       return `<tr><td>${esc(it.name)}${mv[it.id] ? `<span class="o-sub">Market value: ${money(mv[it.id])}</span>` : ""}</td>
-        <td class="num"><input type="number" class="o-max" data-id="${it.id}" value="${it.max}" min="1"></td>
+        <td class="num"><div class="o-mode"><input type="number" class="o-max" data-id="${it.id}" value="${it.value}" step="any">${modeButtons(it.mode, it.id)}</div>${sub}</td>
         <td class="num ${hit(b.im)}">${cell(b.im)}</td><td class="num ${hit(b.bz)}">${cell(b.bz)}</td>
         <td><button class="o-icon" data-del="${it.id}" title="Remove">✕</button></td></tr>`;
     }).join("");
@@ -271,7 +301,8 @@
         ${key ? "" : `<div class="o-banner">Enter a <b>Public Only</b> API key in Settings to start.</div>`}
         <form class="o-acts o-add" data-form="add">
           <input type="text" name="name" list="price-watch-items" placeholder="Item name" class="o-grow" required>
-          <input type="number" name="max" placeholder="Max price" min="1" required>
+          <input type="number" name="value" placeholder="${PLACEHOLDERS[addMode()]}" step="any" required>
+          ${modeButtons(addMode(), "add")}
           <button class="o-btn is-primary">Add</button></form>
         <datalist id="price-watch-items"></datalist>
         <div class="o-scroll o-list"><table><thead><tr><th>Item</th><th class="num">Max</th><th class="num">Market</th><th class="num">Bazaar</th><th></th></tr></thead>
@@ -301,6 +332,18 @@
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.tab) { tab = b.dataset.tab; shareMsg = ""; render(); }
+    else if (b.dataset.mode && b.dataset.id === "add") {
+      // no re-render: it would clear what is typed in the form
+      store.set("addMode", b.dataset.mode);
+      b.parentNode.querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b));
+      b.closest("form").querySelector("[name=value]").placeholder = PLACEHOLDERS[b.dataset.mode];
+    } else if (b.dataset.mode) {
+      const mv = marketValues();
+      store.set("items", watches().map((i) => (String(i.id) === b.dataset.id && i.mode !== b.dataset.mode
+        ? { ...i, mode: b.dataset.mode, value: convert(i, b.dataset.mode, mv) } : i)));
+      render();
+      poll(true);
+    }
     else if (b.dataset.act === "share-export") {
       shareText = exportShared();
       navigator.clipboard.writeText(shareText).then(() => "Settings copied.", () => "Settings are in the box. Copy them from there.")
@@ -330,12 +373,13 @@
       render();
       return;
     }
-    const name = String(data.get("name")).trim().toLowerCase(), max = Number(data.get("max"));
+    const name = String(data.get("name")).trim().toLowerCase(), value = Number(data.get("value")), mode = addMode();
     try {
+      if (!validValue(mode, value)) throw new Error("the price must be above 0");
       const hit = (await catalog()).find(([, n]) => n.toLowerCase() === name);
       if (!hit) throw new Error(`unknown item "${data.get("name")}"`);
-      const items = store.get("items", []).filter((i) => i.id !== hit[0]);
-      store.set("items", [...items, { id: hit[0], name: hit[1], max }]);
+      const items = watches().filter((i) => i.id !== hit[0]);
+      store.set("items", [...items, { id: hit[0], name: hit[1], mode, value }]);
       store.set("error", "");
       render();
       poll(true);
@@ -348,7 +392,8 @@
   function onChange(e) {
     const t = e.target;
     if (t.classList.contains("o-max")) {
-      store.set("items", store.get("items", []).map((i) => (String(i.id) === t.dataset.id ? { ...i, max: Number(t.value) } : i)));
+      store.set("items", watches().map((i) => (String(i.id) === t.dataset.id && validValue(i.mode, Number(t.value))
+        ? { ...i, value: Number(t.value) } : i)));
       render();
       poll(true);  // a higher max needs listings the last check did not keep
     } else if (t.name === "poll") store.set("pollSeconds", Number(t.value));
@@ -437,8 +482,21 @@
   display: block; width: 100%; margin-top: 8px; font: 11px/1.4 ui-monospace, Consolas, monospace; padding: 6px 7px;
   border-radius: 7px; border: 1px solid var(--o-line); background: var(--o-bg); color: var(--o-text); resize: vertical;
 }
-#price-watch-panel input.o-max { width: 8.5em; text-align: right; }
-#price-watch-panel input[name=max] { width: 8em; }
+#price-watch-panel input.o-max { width: 6.5em; text-align: right; }
+#price-watch-panel input[name=value] { width: 7em; }
+/* no +1/-1 arrows on prices */
+#price-watch-panel input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+#price-watch-panel input[type=number]::-webkit-inner-spin-button,
+#price-watch-panel input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#price-watch-panel .o-mode { display: inline-flex; align-items: center; gap: 4px; }
+#price-watch-panel .o-seg { display: inline-flex; flex: 0 0 auto; border: 1px solid var(--o-line); border-radius: 7px; overflow: hidden; }
+#price-watch-panel .o-seg button {
+  appearance: none; border: 0; background: var(--o-bg); color: var(--o-dim); font: inherit; font-size: 11px;
+  font-weight: 600; padding: 5px 6px; cursor: pointer;
+}
+#price-watch-panel .o-seg button + button { border-left: 1px solid var(--o-line); }
+#price-watch-panel .o-seg button:hover { color: var(--o-accent); }
+#price-watch-panel .o-seg button.is-on { background: var(--o-accent); color: #fff; }
 #price-watch-panel input:focus-visible, #price-watch-panel button:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 1px; }
 #price-watch-panel .o-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 #price-watch-panel .o-grow { flex: 1 1 auto; }
